@@ -1,23 +1,48 @@
 import re
-import socket
-from urllib.parse import urlparse
 from datetime import datetime
+from urllib.parse import urlparse
+
+import whois
 
 
 def parse_domain(url):
-    parsed_url = urlparse(url)
-    return parsed_url.netloc
+    updated_url = url
+    if not (updated_url.startswith('http://') or updated_url.startswith('https://')):
+        updated_url = 'http://' + updated_url
+
+    parsed_url = urlparse(updated_url)
+    domain = parsed_url.netloc
+    if domain.startswith('www.'):
+        return domain, domain[4:]
+
+    return domain, domain
 
 
 def check_is_ip(domain):
-    return bool(re.match(r"^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$", domain))
+    return 1 if bool(re.match(r"^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$", domain)) else 0
 
 
-def get_whois_data(url):
-    return {
-        "valid": "Valid",
-        "activeDuration": "10 years"
-    }
+def get_whois_details(domain):
+    try:
+        w = whois.whois(domain)
+    except whois.parser.PywhoisError:
+        return {'is_valid': 0, 'active_duration': 0}
+
+    def normalize_date(date_field):
+        if isinstance(date_field, list):
+            date_field = date_field[0]
+        return date_field
+
+    registration_date = normalize_date(w.creation_date)
+    expiration_date = normalize_date(w.expiration_date)
+
+    is_valid = 1 if expiration_date and expiration_date > datetime.now() else 0
+
+    if registration_date and expiration_date:
+        active_duration = (expiration_date - registration_date).total_seconds() / 3600
+    else:
+        active_duration = 0
+    return {'is_valid': is_valid, 'active_duration': active_duration}
 
 
 def calculate_url_length(url):
@@ -37,7 +62,7 @@ def domain_length(domain):
 
 
 def count_subdomains(domain):
-    return len(domain.split('.')) - 2
+    return len(domain.split('.')) - 1
 
 
 def fetch_page_rank(url):
@@ -45,17 +70,19 @@ def fetch_page_rank(url):
 
 
 def get_url_attr(url):
-    domain = parse_domain(url)
-    return {
-        "Domain": domain,
-        "Ranking": fetch_page_rank(url),
-        "isIp": check_is_ip(domain),
-        "valid": get_whois_data(url)['valid'],
-        "activeDuration": get_whois_data(url)['activeDuration'],
-        "urlLen": calculate_url_length(url),
-        "is@": check_special_char(url, '@'),
-        "isredirect": check_redirect(url),
-        "haveDash": check_special_char(domain, '-'),
-        "domainLen": domain_length(domain),
-        "noOfSubdomain": count_subdomains(domain)
-    }
+    # ('isIp', 'valid', 'activeDuration', 'urlLen', 'is@', 'isredirect', 'haveDash', 'domainLen',
+    #  'nosOfSubdomain')
+
+    fq_domain, domain = parse_domain(url)
+    who_is = get_whois_details(domain)
+    return (
+        check_is_ip(domain),
+        who_is['is_valid'],
+        who_is['active_duration'],
+        calculate_url_length(url),
+        check_special_char(url, '@'),
+        check_redirect(url),
+        check_special_char(url, '-'),
+        domain_length(fq_domain),
+        count_subdomains(url)
+    )

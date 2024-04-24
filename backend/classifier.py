@@ -1,21 +1,19 @@
+import numpy as np
 from joblib import load
 
-
-def load_model(path):
-    # Load the model from the file
-    model = load(path)
-    return model
-
-
-xgb_clf = load('../model/xgb_model.joblib')
+_xgb_clf = load('../model/xgb_model.joblib')
+_scaler = load('../model/scaler.joblib')
 
 
 class _Classifier:
-    def __init__(self, model=xgb_clf):
-        self.model = model
+    def __init__(self, model=_xgb_clf, scaler=_scaler):
+        self._model = model
+        self._scaler = scaler
 
-    def classify(self, X_test):
-        return self.model.predict(X_test)
+    def classify(self, x_test: tuple):
+        X_test = np.array([x_test])
+        X_test_scaled = self._scaler.transform(X_test)
+        return int(self._model.predict(X_test_scaled)[0])
 
 
 clf = _Classifier()
